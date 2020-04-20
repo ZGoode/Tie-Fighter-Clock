@@ -1,3 +1,7 @@
+//fix checkbox for 24 hour time  HTML ONLY PROBLEM NOW JUST A STYLE THING
+//add background
+//add box around config
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
@@ -349,7 +353,7 @@ void handleConfigure() {
   if (hour24) {
     checked = "checked='checked'";
   }
-  form.replace("%24hour%", checked);
+  form.replace("%24HOUR%", checked);
 
   server.send(200, "text/html", form);
 }
@@ -365,7 +369,7 @@ void handleConfigureNoPassword() {
   if (hour24) {
     checked = "checked='checked'";
   }
-  form.replace("%24hour%", checked);
+  form.replace("%24HOUR%", checked);
 
   server.send(200, "text/html", form);
 }

@@ -63,14 +63,16 @@ String homePage = "<!-- First Parallax Image with Logo Text -->"
 
 String configurePage = "<div class='bgimg w3-display-container w3-opacity-min' id='home'>"
                        "<div class='w3-display-middle' style='white-space:nowrap;'>"
+                       "<div class='w3-black'>"
                        "<form class='w3-container' action='/updateConfig' method='get'><h2>Clock Config:</h2>"
                        "<p><label>User ID (for this interface)</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='userid' value='%USERID%' maxlength='20'></p>"
                        "<p><label>Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='stationpassword' value='%STATIONPASSWORD%'></p>"
                        "<p><label>OTA Password </label><input class='w3-input w3-border w3-margin-bottom' type='password' name='otapassword' value='%OTAPASSWORD%'></p>"
                        "<p><label>Time Zone Offset </label><input class='w3-input w3-border w3-margin-bottom' type='text' name='timezone' value='%TIMEZONE%'></p>"
-                       "<p><label>24 Hour Time </label><input class='w3-input w3-border w3-margin-bottom' type='checkbox' name='24hour' value='%24HOUR%'></p>"
+                       "<p><label>24 Hour Time </label><input class='w3-input w3-border w3-margin-bottom' type='checkbox' name='24hour' %24HOUR%></p>"
                        "<button class='w3-button w3-block w3-grey w3-section w3-padding' type='submit'>Save</button>"
                        "</form>"
+                       "</div>"
                        "</div>"
                        "</div>";
 
