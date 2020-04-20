@@ -1,3 +1,6 @@
+//add timezone to config page
+//add 24 time option
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
@@ -15,6 +18,7 @@
 #include "Empire.h"
 #include "HTML.h"
 #include "Vader.h"
+#include "Numbers.h"
 
 #define VERSION "1.0"
 #define HOSTNAME "Tie-Fighter-Clock"
@@ -28,19 +32,36 @@ const int WEBSERVER_PORT = 80;
 const boolean WEBSERVER_ENABLED = true;
 char* www_username = "admin";
 char* www_password = "password";
+int timeZone = -7;
+int screenMode = 0;
+
+boolean hour24 = true;
+
+long previousMillis = 0;
+long previousMillisFade = 0;
+long interval = 5000;
+long fadeInterval = 50;
+
+int engineFade1 = 255;
+int engineFade2 = 25;
+boolean fadeUp = true;
 
 boolean ENABLE_OTA = true;
 String OTA_Password = "";
 
-ESP8266WebServer server(WEBSERVER_PORT);
+ESP8266WebServer server(WEBSERVER_PORT, 7);
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
 
 WiFiUDP ntpUDP;
 
-NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", 3600, 60000);
+NTPClient timeClient(ntpUDP, "ntp1.net.berkeley.edu");
 
 const int externalLight = LED_BUILTIN;
+const int engine17 = D3;
+const int engine26 = D4;
+const int engine35 = D5;
+const int engine4 = D6;
 
 void setup(void) {
   Serial.begin(115200);
@@ -49,9 +70,14 @@ void setup(void) {
 
   Serial.println();
   pinMode(externalLight, OUTPUT);
+  pinMode(engine17, OUTPUT);
+  pinMode(engine26, OUTPUT);
+  pinMode(engine35, OUTPUT);
+  pinMode(engine4, OUTPUT);
 
   readSettings();
 
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.display();
   if (INVERT_DISPLAY) {
     display.invertDisplay(true); // connections at top of OLED display
@@ -59,6 +85,8 @@ void setup(void) {
 
   display.clearDisplay();
   display.display();
+  delay(100);
+  display.clearDisplay();
 
   parseHomePage();
   parseConfigurePage();
@@ -99,9 +127,13 @@ void setup(void) {
 
   if (WEBSERVER_ENABLED) {
     Serial.println("WEBSERVER ENABLED");
+    server.on("/Home", HTTP_GET, handleRoot);
     server.on("/systemreset", handleSystemReset);
     server.on("/forgetwifi", handleWifiReset);
-    server.on("/configure", handleConfigure);
+    server.on("/Configure", handleConfigure);
+    server.on("/updateConfig", handleUpdateConfigure);
+    server.on("/FactoryReset", handleSystemReset);
+    server.on("/WifiReset", handleWifiReset);
     server.onNotFound(handleRoot);
     server.begin();
     Serial.println("Server started");
@@ -120,6 +152,73 @@ void loop() {
   ArduinoOTA.handle();
 
   delay(1);
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis > interval) {
+    previousMillis = currentMillis;
+
+    if (screenMode == 0) {
+      screenMode = 1;
+    } else {
+      screenMode = 0;
+    }
+  }
+
+  if (currentMillis - previousMillisFade > fadeInterval) {
+    fadeInterval = random(250);
+    int fadeAmount = random(5);
+
+    previousMillisFade = currentMillis;
+    if (fadeUp) {
+      engineFade1 = engineFade1 + 5;
+      engineFade2 = engineFade2 - 5;
+
+      engineFade1 = constrain(engineFade1, 0, 255);
+      engineFade2 = constrain(engineFade2, 0, 255);
+
+      analogWrite(engine17, engineFade1);
+      analogWrite(engine26, engineFade2);
+      analogWrite(engine35, engineFade1);
+      analogWrite(engine4, engineFade2);
+      if (engineFade1 >= 255) {
+        fadeUp = false;
+      }
+    } else if (!fadeUp) {
+      engineFade1 = engineFade1 - 5;
+      engineFade2 = engineFade2 + 5;
+
+      engineFade1 = constrain(engineFade1, 0, 255);
+      engineFade2 = constrain(engineFade2, 0, 255);
+
+      analogWrite(engine17, engineFade1);
+      analogWrite(engine26, engineFade2);
+      analogWrite(engine35, engineFade1);
+      analogWrite(engine4, engineFade2);
+      if (engineFade2 >= 255) {
+        fadeUp = true;
+      }
+    }
+  }
+
+  if (screenMode == 1) { //Time Mode
+    display.clearDisplay();
+    int hours = handleHours();
+    int minutes = timeClient.getMinutes();
+
+    display.drawBitmap(0, 0, Empire, EMPIRE_WIDTH, EMPIRE_HEIGHT, 1);
+    display.drawBitmap(96, 0, Empire, EMPIRE_WIDTH, EMPIRE_HEIGHT, 1);
+    display.drawBitmap((display.width()  - COLON_WIDTH) / 2, 0, Colon, COLON_WIDTH, COLON_HEIGHT, 1);
+
+    displayTime(hours, minutes);
+
+    display.display();
+  } else if (screenMode == 0) { //Vader Mode
+    display.clearDisplay();
+
+    display.drawBitmap((display.width()  - VADER_WIDTH ) / 2, 0, Vader, VADER_WIDTH, VADER_HEIGHT, 1);
+
+    display.display();
+  }
 }
 
 void handleSystemReset() {
@@ -166,6 +265,9 @@ void writeSettings() {
     Serial.println("Saving settings now...");
     f.println("www_username=" + String(www_username));
     f.println("www_password=" + String(www_password));
+    f.println("otapassword=" + String(OTA_Password));
+    f.println("timezone=" + String(timeZone));
+    f.println("24hour=" + String(hour24));
   }
   f.close();
   readSettings();
@@ -209,8 +311,21 @@ void readSettings() {
       temp.toCharArray(www_password, sizeof(temp));
       Serial.println("www_password=" + String(www_password));
     }
+    if (line.indexOf("timezone=") >= 0) {
+      timeZone = line.substring(line.lastIndexOf("timezone=") + 9).toInt();
+      Serial.println("timezone=" + String(timeZone));
+    }
+    if (line.indexOf("24hour=") >= 0) {
+      hour24 = line.substring(line.lastIndexOf("24hour=") + 7).toInt();
+      Serial.println("IS_METRIC=" + String(hour24));
+    }
+    if (line.indexOf("otapassword=") >= 0) {
+      hour24 = line.substring(line.lastIndexOf("otapassword=") + 12).toInt();
+      Serial.println("otapassword=" + String(OTA_Password));
+    }
   }
-  fr.close();
+}
+fr.close();
 }
 
 void handleNotFound() {
@@ -230,6 +345,13 @@ void handleConfigure() {
   form.replace("%USERID%", www_username);
   form.replace("%STATIONPASSWORD%", www_password);
   form.replace("%OTAPASSWORD%", OTA_Password);
+  form.replace("%TIMEZONE%", String(timeZone));
+
+  String checked = "";
+  if (hour24) {
+    checked = "checked='checked'";
+  }
+  form.replace("%24hour%", checked);
 
   server.send(200, "text/html", form);
 }
@@ -239,6 +361,106 @@ void handleConfigureNoPassword() {
   form.replace("%USERID%", www_username);
   form.replace("%STATIONPASSWORD%", www_password);
   form.replace("%OTAPASSWORD%", OTA_Password);
+  form.replace("%TIMEZONE%", String(timeZone));
+
+  String checked = "";
+  if (hour24) {
+    checked = "checked='checked'";
+  }
+  form.replace("%24hour%", checked);
 
   server.send(200, "text/html", form);
+}
+
+void displayTime(int h, int m) {
+  int h1;
+  int h2;
+  int m1;
+  int m2;
+
+  int pos1 = 33;
+  int pos2 = 47;
+  int pos3 = 67;
+  int pos4 = 81;
+
+  if (h < 10) {
+    h1 = 0;
+    h2 = h;
+  } else {
+    h1 = h / 10;
+    h2 = h % 10;
+  }
+
+  if (m < 10) {
+    m1 = 0;
+    m2 = m;
+  } else {
+    m1 = m / 10;
+    m2 = m % 10;
+  }
+
+  for (int i = 0; i < 4; i++) {
+    int temp1;
+    int temp2;
+
+    if (i == 0) {
+      temp1 = h1;
+      temp2 = pos1;
+    } else if (i == 1) {
+      temp1 = h2;
+      temp2 = pos2;
+    } else if (i == 2) {
+      temp1 = m1;
+      temp2 = pos3;
+    } else if (i == 3) {
+      temp1 = m2;
+      temp2 = pos4;
+    }
+
+    if (temp1 == 0) {
+      display.drawBitmap(temp2, 0, Zero, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 1) {
+      display.drawBitmap(temp2, 0, One, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 2) {
+      display.drawBitmap(temp2, 0, Two, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 3) {
+      display.drawBitmap(temp2, 0, Three, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 4) {
+      display.drawBitmap(temp2, 0, Four, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 5) {
+      display.drawBitmap(temp2, 0, Five, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 6) {
+      display.drawBitmap(temp2, 0, Six, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 7) {
+      display.drawBitmap(temp2, 0, Seven, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 8) {
+      display.drawBitmap(temp2, 0, Eight, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    } else if (temp1 == 9) {
+      display.drawBitmap(temp2, 0, Nine, NUMBER_WIDTH, NUMBER_HEIGHT, 1);
+    }
+  }
+}
+
+int handleHours() {
+  int tempHours = timeClient.getHours();
+
+  if (timeZone < 0) {
+    if (abs(timeZone) >= tempHours) {
+      tempHours = tempHours + 12;
+    }
+  } else {
+    if ((tempHours + timeZone) >= 12) {
+      tempHours = tempHours - 12;
+    }
+  }
+
+  tempHours = tempHours + timeZone;
+
+  if (!hour24) {
+    if (tempHours > 12) {
+      tempHours = tempHours - 12;
+    }
+  }
+
+  return tempHours;
 }
