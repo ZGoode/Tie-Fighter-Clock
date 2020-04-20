@@ -324,8 +324,7 @@ void readSettings() {
       Serial.println("otapassword=" + String(OTA_Password));
     }
   }
-}
-fr.close();
+  fr.close();
 }
 
 void handleNotFound() {
