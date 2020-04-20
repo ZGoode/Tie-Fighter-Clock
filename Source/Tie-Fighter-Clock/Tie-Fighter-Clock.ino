@@ -1,6 +1,3 @@
-//add timezone to config page
-//add 24 time option
-
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
@@ -49,7 +46,7 @@ boolean fadeUp = true;
 boolean ENABLE_OTA = true;
 String OTA_Password = "";
 
-ESP8266WebServer server(WEBSERVER_PORT, 7);
+ESP8266WebServer server(WEBSERVER_PORT);
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
 
@@ -127,6 +124,7 @@ void setup(void) {
 
   if (WEBSERVER_ENABLED) {
     Serial.println("WEBSERVER ENABLED");
+    server.on("/", HTTP_GET, handleRoot);
     server.on("/Home", HTTP_GET, handleRoot);
     server.on("/systemreset", handleSystemReset);
     server.on("/forgetwifi", handleWifiReset);
@@ -144,14 +142,13 @@ void setup(void) {
   }
 
   timeClient.begin();
+  timeClient.update();
 }
 
 void loop() {
   timeClient.update();
   server.handleClient();
   ArduinoOTA.handle();
-
-  delay(1);
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis > interval) {
@@ -283,6 +280,8 @@ void handleUpdateConfigure() {
   temp = server.arg("stationpassword");
   temp.toCharArray(www_password, sizeof(temp));
   OTA_Password = server.arg("otapassword");
+  timeZone = server.arg("timezone").toInt();
+  hour24 = server.hasArg("24hour");
 
   writeSettings();
   handleConfigureNoPassword();
