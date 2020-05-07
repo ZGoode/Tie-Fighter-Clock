@@ -34,13 +34,16 @@ char* www_username = "admin";
 char* www_password = "password";
 int timeZone = -7;
 int screenMode = 0;
+boolean displayIP = false;
 
 boolean hour24 = true;
 
 long previousMillis = 0;
 long previousMillisFade = 0;
+long previousMillisIP = 0;
 long interval = 5000;
 long fadeInterval = 50;
+long IPInterval = 10000;
 
 int engineFade1 = 255;
 int engineFade2 = 25;
@@ -63,6 +66,8 @@ const int engine26 = D4;
 const int engine35 = D5;
 const int engine4 = D6;
 
+const int IPAddressButton = D7;
+
 void setup(void) {
   Serial.begin(115200);
   SPIFFS.begin();
@@ -74,6 +79,8 @@ void setup(void) {
   pinMode(engine26, OUTPUT);
   pinMode(engine35, OUTPUT);
   pinMode(engine4, OUTPUT);
+
+  pinMode(IPAddressButton, INPUT);
 
   readSettings();
 
@@ -200,7 +207,7 @@ void loop() {
     }
   }
 
-  if (screenMode == 1) { //Time Mode
+  if ((screenMode == 1) && !displayIP) { //Time Mode
     display.clearDisplay();
     int hours = handleHours();
     int minutes = timeClient.getMinutes();
@@ -212,13 +219,40 @@ void loop() {
     displayTime(hours, minutes);
 
     display.display();
-  } else if (screenMode == 0) { //Vader Mode
+  } else if ((screenMode == 0) && !displayIP) { //Vader Mode
     display.clearDisplay();
 
     display.drawBitmap((display.width()  - VADER_WIDTH ) / 2, 0, Vader, VADER_WIDTH, VADER_HEIGHT, 1);
 
     display.display();
   }
+
+  if (digitalRead(IPAddressButton) == HIGH) { //IP Address Mode
+    String tempString = "";
+
+    previousMillisIP = currentMillis;
+
+    displayIP = true;
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 4);
+    display.println(F("You May Connect to IP"));
+    display.setCursor(0, 13);
+    tempString = WiFi.localIP().toString();
+    display.println(tempString);
+    display.setCursor(0, 22);
+    tempString = "Port: ";
+    tempString = tempString + String(WEBSERVER_PORT);
+    display.println(tempString);
+    display.display();
+  }
+
+  if (currentMillis - previousMillisIP > IPInterval) {
+    displayIP = false;
+  }
+
 }
 
 void handleSystemReset() {
